@@ -1,11 +1,15 @@
 """Module containing load classes."""
 
 # Standard Libary Imports
-from math import radians
+from math import cos, radians, sin
 
-# Third Party Imports
-from sympy.abc import x
-from sympy import oo, integrate, SingularityFunction, sympify, cos, sin, Piecewise
+# SymPy/SymEngine Imports
+try:
+    from symengine import Piecewise, symbols, sympify
+except ImportError:
+    from sympy import Piecewise, symbols, sympify
+from sympy import integrate, SingularityFunction
+x = symbols('x')
 
 # Local application imports
 from indeterminatebeam.data_validation import (
@@ -50,10 +54,10 @@ class Load:
             self._y0 = 0
 
         # self._x1 represents NF(x), normal force as function of x.
-        self._x1 = integrate(self._x0, x)  # NF
+        self._x1 = integrate(self._x0, (x,))  # NF
 
         # self._y1 represents SF(x), shear force as function of x.
-        self._y1 = integrate(self._y0, x)  # SF
+        self._y1 = integrate(self._y0, (x,))  # SF
 
 
 class PointTorque(Load):

@@ -25,6 +25,8 @@ install:
 # command to test examples and then run tests
 script:
   - pytest --cov=./
+  - pip install symengine
+  - pytest --cov=./ --cov-append
   
 # Push the results back to codecov
 after_success:

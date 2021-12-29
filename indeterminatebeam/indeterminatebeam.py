@@ -19,11 +19,20 @@ from collections import namedtuple
 from math import radians
 import time
 
+# SymPy/SymEngine Imports
+try:
+    from symengine import (
+        Lambdify as lambdify, linsolve, oo, Piecewise, symbols, sympify
+    )
+    USE_SYMENGINE = True
+except ImportError:
+    from sympy import lambdify, linsolve, oo, Piecewise, symbols, sympify
+    USE_SYMENGINE = False
+from sympy import integrate, SingularityFunction
+x = symbols('x')
+
 # Third Party Imports
 import numpy as np
-from sympy import (integrate, lambdify, Piecewise, sympify, symbols,
-                   linsolve, sin, cos, oo, SingularityFunction)
-from sympy.abc import x
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
 
@@ -637,7 +646,7 @@ class Beam:
 
         # integrate to get NF * x as a function of x. Needed
         # later for displacement which is used if x springs are present
-        Nv_EA = integrate(N_i, x) * units['length']
+        Nv_EA = integrate(N_i, (x,)) * units['length']
 
         # shear forces. At a point x within the beam the cumulative sum of the
         # vertical forces (represented by load._y1 + reactons) plus the
@@ -668,22 +677,22 @@ class Beam:
         # of point torques through load._y1 which represents moments
         # as a SingularityFunction of power -1 (the point moments are
         # therefore only considered once the integration below takes place)
-        M_i_1 = integrate(F_i_1, x) * units['length'] \
-            + integrate(sum(load._y1 for load in self._loads if isinstance(load, PointTorque)), x) * units['moment'] \
+        M_i_1 = integrate(F_i_1, (x,)) * units['length'] \
+            + integrate(sum(load._y1 for load in self._loads if isinstance(load, PointTorque)), (x,)) * units['moment'] \
             - sum([a['torque'] for a in unknowns['m']])
 
-        M_i_2 = integrate(F_i_2, x) * units['length']
+        M_i_2 = integrate(F_i_2, (x,)) * units['length']
 
         M_i = M_i_1 + M_i_2
 
         # integrate M_i for beam slope equation
-        dv_EI_1 = integrate(M_i_1, x) * units['length'] + C1
-        dv_EI_2 = integrate(M_i_2, x) * units['length']
+        dv_EI_1 = integrate(M_i_1, (x,)) * units['length'] + C1
+        dv_EI_2 = integrate(M_i_2, (x,)) * units['length']
         dv_EI = dv_EI_1 + dv_EI_2
 
         # integrate M_i twice for deflection equation
-        v_EI_1 = integrate(dv_EI_1, x) * units['length'] + C2 #should c2 be multiplied by the value
-        v_EI_2 = integrate(dv_EI_2, x) * units['length']
+        v_EI_1 = integrate(dv_EI_1, (x,)) * units['length'] + C2 #should c2 be multiplied by the value
+        v_EI_2 = integrate(dv_EI_2, (x,)) * units['length']
         v_EI = v_EI_1 + v_EI_2
 
         # create a list of equations for tangential direction
@@ -738,12 +747,21 @@ class Beam:
                 )
 
         # compute analysis with linsolve
-        solutions_ym = list(linsolve(equations_ym, unknowns_ym))[0]
-        solutions_xx = list(linsolve(equations_xx, unknowns_xx))[0]
+        solutions_ym = linsolve(equations_ym, unknowns_ym)
+        solutions_xx = linsolve(equations_xx, unknowns_xx)
 
         # Create solution dictionary
-        solutions = [a for a in solutions_ym + solutions_xx]
-        solution_dict = dict(zip(unknowns_ym + unknowns_xx, solutions))
+        if hasattr(solutions_ym, 'args'):
+            # SymPy wraps the tuple of solutions inside a FiniteSet.
+            # This workaround is not needed for SymEngine.
+            assert len(solutions_ym.args) == 1
+            assert len(solutions_xx.args) == 1
+            solutions_ym = solutions_ym.args[0]
+            solutions_xx = solutions_xx.args[0]
+        solution_dict = dict(zip(
+            unknowns_ym + unknowns_xx,
+            solutions_ym + solutions_xx,
+        ))
 
         # Initialise self._reactions to hold reaction forces for each support
         self._reactions = {a._position: [0, 0, 0] for a in self._supports}
@@ -830,12 +848,19 @@ class Beam:
         x_vec = np.unique(x_vec)
 
         # lamdify functions
-        nf_func = lambdify(x, self._normal_forces, 'numpy')
-        sf_func = lambdify(x, self._shear_forces, 'numpy')
-        bm_func = lambdify(x, self._bending_moments, 'numpy')
-        d_func = lambdify(x, self._deflection_equation, 'numpy')
+        lambdify_kwargs = {}
+        if USE_SYMENGINE:
+            lambdify_kwargs['dtype'] = x_vec.dtype
+        else:
+            lambdify_kwargs['modules'] = 'numpy'
+        nf_func = lambdify(x, self._normal_forces, **lambdify_kwargs)
+        sf_func = lambdify(x, self._shear_forces, **lambdify_kwargs)
+        bm_func = lambdify(x, self._bending_moments, **lambdify_kwargs)
+        d_func = lambdify(x, self._deflection_equation, **lambdify_kwargs)
 
         # create numpy arrays for functions (y vectors)
+        # SymPy lambda can return a constant, so always multiply by ones.
+        # This workaround is not needed for SymEngine.
         nf = nf_func(x_vec) * np.ones(len(x_vec))
         sf = sf_func(x_vec) * np.ones(len(x_vec))
         bm = bm_func(x_vec) * np.ones(len(x_vec))
