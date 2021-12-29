@@ -836,10 +836,10 @@ class Beam:
         d_func = lambdify(x, self._deflection_equation, 'numpy')
 
         # create numpy arrays for functions (y vectors)
-        nf = np.array([float(nf_func(t)) for t in x_vec])
-        sf = np.array([float(sf_func(t)) for t in x_vec])
-        bm = np.array([float(bm_func(t)) for t in x_vec])
-        d = np.array([float(d_func(t)) for t in x_vec])
+        nf = nf_func(x_vec) * np.ones(len(x_vec))
+        sf = sf_func(x_vec) * np.ones(len(x_vec))
+        bm = bm_func(x_vec) * np.ones(len(x_vec))
+        d = d_func(x_vec) * np.ones(len(x_vec))
         
         # associate functions and vectors with self._plotting_vectors
         self._plotting_vectors = {
